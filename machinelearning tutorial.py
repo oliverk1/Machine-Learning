@@ -13,6 +13,19 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn import linear_model
 from sklearn.linear_model import LogisticRegression
 from sklearn import datasets
+from sklearn.cluster import KMeans
+from sklearn import datasets
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+from sklearn.ensemble import BaggingClassifier
+from sklearn.tree import plot_tree
+from sklearn.model_selection import KFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import LeaveOneOut, cross_val_score
+from sklearn.model_selection import LeavePOut, cross_val_score
+from sklearn.model_selection import ShuffleSplit, cross_val_score
+from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score, roc_curve
+from sklearn.neighbors import KNeighborsClassifier
 import pandas as pd
 
 #Using linear regression to predict future values
@@ -267,4 +280,224 @@ def categoricalData():
     #colors = pd.DataFrame({'color': ['blue', 'red']})
     #dummies = pd.get_dummies(colors, drop_first=True)
 
-categoricalData()
+def kMeans():
+    #unsupervised method to cluster data points by minimizing variance
+    #select k and cluster no. and computes centroid of each cluster to closest centroids
+    #elbow method graphs inertia and visualise when the distances decrease
+    #good to estimate best value for k based on data
+    x = [4, 5, 10, 4, 3, 11, 14, 6, 10, 12]
+    y = [21, 19, 24, 17, 16, 25, 24, 22, 21, 21]
+    data = list(zip(x, y))
+    inertias = []
+    #must find best value for k, has 10 data points so 10 max clusters
+    #choose k value where elbow becomes more linear which is k=2
+    for i in range(1, 11):
+        kmeans = KMeans(n_clusters=i)
+        kmeans.fit(data)
+        inertias.append(kmeans.inertia_)
+    #plt.plot(range(1, 11), inertias, marker='o')
+    #plt.title('Elbow method')
+    #plt.xlabel('Number of clusters')
+    #plt.ylabel('Inertia')
+    #plt.show()
+    #shows k=2 is a good value
+    kmeans = KMeans(n_clusters=2)
+    kmeans.fit(data)
+    plt.scatter(x, y, c=kmeans.labels_)
+    plt.show()
+
+def bagging():
+    #bagging/boostrap aggregation
+    #decision trees can be prone to overfitting training sets leading to wrong predictions on new data
+    #bagging attempts to resolve overfitting for classification or regression problems
+    #does this by taking random subsets of data and fits a classifier or regressor to each
+    #predictions are aggregated through majority vote for class or average for regression to increase accuracy
+    #as_frame=True to ensure feature names are not lost when loading data
+    data = datasets.load_wine(as_frame=True)
+    X = data.data
+    y = data.target
+    #need to split data into test and train sets
+    #randomstate just generates random numbers
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=22)
+    #base classifier fit to training data
+    #this is the default decision tree method
+    dtree = DecisionTreeClassifier(random_state=22)
+    dtree.fit(X_train, y_train)
+    y_pred = dtree.predict(X_test)
+    print("Train data accuracy:", accuracy_score(y_true=y_train, y_pred=dtree.predict(X_train)))
+    print("Test data accuracy:", accuracy_score(y_true=y_test, y_pred=y_pred))
+    #the following is bootstrap aggregation to compare the accuracy
+    #n_estimators is number of base classifiers the model aggregates
+    #in this model it is relatively low and hyperparameter tuning is often done with grid search
+    estimator_range = [2, 4, 6, 8, 10, 12, 14, 16]
+    models = []
+    scores = []
+    for n_estimators in estimator_range:
+        #create bagging classifier
+        clf = BaggingClassifier(n_estimators=n_estimators, random_state=22)
+        #fit the model
+        clf.fit(X_train, y_train)
+        #append the model and score to their respective list
+        models.append(clf)
+        scores.append(accuracy_score(y_true=y_test, y_pred=clf.predict(X_test)))
+    #generate the plot of scores against number of estimators
+    plt.figure(figsize=(9, 6))
+    plt.plot(estimator_range, scores)
+    #adjust labels and font (to make visable)
+    plt.xlabel("n_estimators", fontsize=18)
+    plt.ylabel("score", fontsize=18)
+    plt.tick_params(labelsize=16)
+    #visualize plot
+    plt.show()
+    #therefore by using n_estimates as 12 there is a 13.3% increase in accuracy of the model using bagging
+    #can use out of bag observations to evaluate a model however can overestimate error in binary classification
+    #should be in compliment of other metrics
+
+def baggingKnownNEstimators():
+    #can visualise decision tree used to vote for final predictions within model
+    data = datasets.load_wine(as_frame=True)
+    X = data.data
+    y = data.target
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=22)
+    clf = BaggingClassifier(n_estimators=12, oob_score=True, random_state=22)
+    clf.fit(X_train, y_train)
+    plt.figure(figsize=(30, 20))
+    plot_tree(clf.estimators_[0], feature_names=X.columns)
+    plt.show()
+
+def crossValidation():
+    #hyperparameter tuning can lead to better performance however can lead to information leakage leading to
+    #worse performance on unseen data, can correct for this with cross validation
+    #there are many methods of CV the following is
+    #k-fold:
+    #training data is split into k smaller sets to validate model and trained on k-1 folds of training set
+    #remaining set is used as a validation set to evaluate model
+    X, y = datasets.load_iris(return_X_y=True)
+    clf = DecisionTreeClassifier(random_state=42)
+    k_folds = KFold(n_splits=5)
+    scores = cross_val_score(clf, X, y, cv=k_folds)
+    print("Cross Validation Scores: ", scores)
+    print("Average CV Score: ", scores.mean())
+    print("Number of CV Scores used in Average: ", len(scores))
+    #stratified k-fold:
+    #classes are imbalanced so need to stratify target classes meaning both sets have an equal proportion of all classes
+    X, y = datasets.load_iris(return_X_y=True)
+    clf = DecisionTreeClassifier(random_state=42)
+    sk_folds = StratifiedKFold(n_splits=5)
+    scores = cross_val_score(clf, X, y, cv=sk_folds)
+    print("Cross Validation Scores: ", scores)
+    print("Average CV Score: ", scores.mean())
+    print("Number of CV Scores used in Average: ", len(scores))
+    #leave-one-out (LOO):
+    #utilize 1 observation to validate and n-1 observations to train. this is an exhaustive technique
+    X, y = datasets.load_iris(return_X_y=True)
+    clf = DecisionTreeClassifier(random_state=42)
+    loo = LeaveOneOut()
+    scores = cross_val_score(clf, X, y, cv=loo)
+    print("Cross Validation Scores: ", scores)
+    print("Average CV Score: ", scores.mean())
+    print("Number of CV Scores used in Average: ", len(scores))
+    #leave-p-out (LPO):
+    #same as before but can select p value
+    X, y = datasets.load_iris(return_X_y=True)
+    clf = DecisionTreeClassifier(random_state=42)
+    lpo = LeavePOut(p=2)
+    scores = cross_val_score(clf, X, y, cv=lpo)
+    print("Cross Validation Scores: ", scores)
+    print("Average CV Score: ", scores.mean())
+    print("Number of CV Scores used in Average: ", len(scores))
+    #shuffle split:
+    #leaves out a percentage of data not to be used in train or validation
+    #must decide train and test size and split no.
+    X, y = datasets.load_iris(return_X_y=True)
+    clf = DecisionTreeClassifier(random_state=42)
+    ss = ShuffleSplit(train_size=0.6, test_size=0.3, n_splits=5)
+    scores = cross_val_score(clf, X, y, cv=ss)
+    print("Cross Validation Scores: ", scores)
+    print("Average CV Score: ", scores.mean())
+    print("Number of CV Scores used in Average: ", len(scores))
+
+def AUC_ROC_Curve():
+    #common evaluation metric is accuracy
+    #can use AUC - ROC (area under the receiver operating characteristic) curve
+    #this plots the true positive rate versus false positive rate at different class thresholds
+    #eg imbalanced data can be majority right by predicting majority class
+    n = 10000
+    ratio = .95
+    n_0 = int((1 - ratio) * n)
+    n_1 = int(ratio * n)
+    y = numpy.array([0] * n_0 + [1] * n_1)
+    # below are the probabilities obtained from a hypothetical model that always predicts the majority class
+    # probability of predicting class 1 is going to be 100%
+    y_proba = numpy.array([1] * n)
+    y_pred = y_proba > .5
+    print(f'accuracy score: {accuracy_score(y, y_pred)}')
+    cf_mat = confusion_matrix(y, y_pred)
+    print('Confusion matrix')
+    print(cf_mat)
+    print(f'class 0 accuracy: {cf_mat[0][0] / n_0}')
+    print(f'class 1 accuracy: {cf_mat[1][1] / n_1}')
+    #this model whilst can accurately predict class 1 100% of the time it can never predict class 0
+    #therefore at the expense of accuracy it is better to have a model that can seperate the classes
+    # below are the probabilities obtained from a hypothetical model that doesn't always predict the mode
+    y_proba_2 = numpy.array(
+        numpy.random.uniform(0, .7, n_0).tolist() +
+        numpy.random.uniform(.3, 1, n_1).tolist()
+    )
+    y_pred_2 = y_proba_2 > .5
+    print(f'accuracy score: {accuracy_score(y, y_pred_2)}')
+    cf_mat = confusion_matrix(y, y_pred_2)
+    print('Confusion matrix')
+    print(cf_mat)
+    print(f'class 0 accuracy: {cf_mat[0][0] / n_0}')
+    print(f'class 1 accuracy: {cf_mat[1][1] / n_1}')
+    #this accuracy is more balanced even if class 1 accuracy has dropped
+    #using just accuracy as a evaluation metric the first model would be rated higher
+    #however this tells us nothing about the data therefore use AUC
+    fpr, tpr, thresholds = roc_curve(y, y_pred)
+    plt.plot(fpr, tpr)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.show()
+    print(f'model 1 AUC score: {roc_auc_score(y, y_pred)}')
+    fpr, tpr, thresholds = roc_curve(y, y_pred_2)
+    plt.plot(fpr, tpr)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.show()
+    print(f'model 2 AUC score: {roc_auc_score(y, y_pred_2)}')
+    #model 2 has a higher AUC score closer to 1 therefore model has the ability to seperate the two classes
+    #AUC utilizes probabilities of class predictions, you can be more confident in a model with higher AUC
+    #even if they have similar accuracies
+
+def KNN():
+    #K-nearest neighbour
+    #simple unsupervised ML algorithm which can be used for classification or regression
+    #freq used in missing value imputation
+    #k is the number of nearest neighbours to use
+    #in classification a majority vote is used to determine a class
+    #larger k are more robust to outliers and have more stable decision boundaries
+    x = [4, 5, 10, 4, 3, 11, 14, 8, 10, 12]
+    y = [21, 19, 24, 17, 16, 25, 24, 22, 21, 21]
+    classes = [0, 0, 1, 0, 0, 1, 1, 0, 1, 1]
+    plt.scatter(x, y, c=classes)
+    plt.show()
+    data = list(zip(x, y))
+    #using k=1 a new datapoint is classified
+    knn = KNeighborsClassifier(n_neighbors=1)
+    knn.fit(data, classes)
+    new_x = 8
+    new_y = 21
+    new_point = [(new_x, new_y)]
+    prediction = knn.predict(new_point)
+    plt.scatter(x + [new_x], y + [new_y], c=classes + [prediction[0]])
+    plt.text(x=new_x - 1.7, y=new_y - 0.7, s=f"new point, class: {prediction[0]}")
+    plt.show()
+    #now again with a higher k value
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(data, classes)
+    prediction = knn.predict(new_point)
+    plt.scatter(x + [new_x], y + [new_y], c=classes + [prediction[0]])
+    plt.text(x=new_x - 1.7, y=new_y - 0.7, s=f"new point, class: {prediction[0]}")
+    plt.show()
+    #using a higher number of neighbours the classification of the point changes
